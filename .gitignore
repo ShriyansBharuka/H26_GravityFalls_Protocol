@@ -7,3 +7,7 @@ dist/
 .venv/
 venv/
 status.html
+.venv*/
+.env
+.env.*
+dependency-exit-out/
