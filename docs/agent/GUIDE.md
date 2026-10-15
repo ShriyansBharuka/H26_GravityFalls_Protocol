@@ -83,13 +83,24 @@ cited evidence ids must exist; SUPPORTED needs valid evidence; runtime claims ne
 is overridden when executed failure evidence exists; unanimous rejection without executed evidence is UNSUPPORTED.
 Votes are treated as correlated opinions, not independent proof.
 
-**Repair.** Proposers A (minimal), B (migration), C (alternative) return complete file contents, limited to the
-manifests and the files that use the scoped dependencies (never tests). Each reviewer sees the other candidates'
+**Repair.** Proposers A (minimal), B (migration), C (alternative) return exact find/replace edits (not whole-file
+rewrites: a 3B model truncated `pyproject.toml` that way), limited to the manifests and the files that use the scoped
+dependencies (never tests). The validator rejects edits whose `find` text is not unique, results that do not parse
+(TOML / Python), files that lose more than half their lines, and manifests that end up declaring a scoped package with
+different version specs; the proposer gets one self-correction round with the exact validator messages. Model output is
+capped (`RA_NUM_PREDICT`) and requests time out (`RA_LLM_TIMEOUT`). Each reviewer sees the other candidates'
 diffs under random labels (`Proposal-P/Q/R`) and scores nine criteria with specific defects. Proposers revise once.
 Ranking is deterministic: weighted criteria x reviewer weight, minus defect and reject penalties; ties go to the
 smaller diff. After verification, issue-scoped weights change (proposer +0.2/-0.4; reviewer +/-0.1 only when the
 verifier confirms or refutes their verdict; clipped 0.2-2.0). Weights live in the repair thread's state and reset
-for every new issue/thread; history is kept in the capsule. Model parameters are frozen (seed and temperature recorded).
+for every new issue/thread; history is kept in the capsule. Model weights are never changed (seed and temperature recorded).
+Reviewer labels such as `P` or `proposal p` are normalised to `Proposal-P` before scoring.
+
+**Retries after a failed verification** (max `RA_MAX_ATTEMPTS`): the proposer receives the gate reasons, every manifest
+`file:line` that declares the scoped package, each distinct failing test/error once with its environments, regressions,
+and the reviewers' specific defects; its previous patch is shown as "THIS FAILED, do not repeat it"; each retry uses a
+different seed and a higher temperature; a diff identical to one that already failed is rejected and never ranked.
+A new `repair --new` run archives the previous run's candidates, reviews and verifications.
 
 ## 6. Verification design
 
