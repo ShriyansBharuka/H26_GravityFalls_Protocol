@@ -36,6 +36,13 @@ def test_reviewer_never_sees_own_patch():
     assert "DIFF-OF-B" in seen["prompt"] and "DIFF-OF-A" not in seen["prompt"]
 
 
+def test_review_labels_are_normalised():
+    shown = {"Proposal-P": 1, "Proposal-Q": 2}
+    for raw in ("P", "Proposal-P", "proposal p", "### Proposal-P:", "p"):
+        assert repair.normalize_label(raw, shown) == "Proposal-P", raw
+    assert repair.normalize_label("R", shown) is None and repair.normalize_label("", shown) is None
+
+
 def test_rank_is_deterministic_with_tiebreak():
     cands = [cand("A1", "A", "a\nb\nc\n"), cand("B1", "B", "a\n"), cand("C1", "C", valid=False)]
     reviews = [rev("C", "A1", 4), rev("C", "B1", 4)]

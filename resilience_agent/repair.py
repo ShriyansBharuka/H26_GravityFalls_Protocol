@@ -210,9 +210,18 @@ def review(provider, issue, cands, reviewer, labels, base_gate, log=print):
     out, meta = provider.complete(f"reviewer-{reviewer}", SYSTEM, prompt, ReviewOutput, 0.2, tag=issue["issue_id"])
     reviews = []
     for r in out.reviews:
-        if r.proposal_label in shown:
-            reviews.append(r.model_dump() | {"reviewer": reviewer, "cand_id": labels[r.proposal_label], "meta": meta})
+        label = normalize_label(r.proposal_label, shown)
+        if label:
+            reviews.append(r.model_dump() | {"proposal_label": label, "reviewer": reviewer,
+                                             "cand_id": labels[label], "meta": meta})
     return reviews
+
+
+def normalize_label(raw, shown):
+    """Small models answer 'P', 'Proposal P' or 'proposal-p' for 'Proposal-P'; map them back, else None."""
+    letter = raw.strip().strip("#:*` ").split("-")[-1].split()[-1].upper() if raw.strip() else ""
+    label = f"Proposal-{letter}"
+    return label if label in shown else None
 
 
 def critique_for(cand, reviews):
