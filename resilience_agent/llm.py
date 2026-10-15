@@ -47,7 +47,8 @@ class OllamaProvider:
             body = {
                 "model": self.s.model, "messages": messages, "stream": False,
                 "format": schema.model_json_schema(),
-                "options": {"temperature": temperature, "seed": self.s.seed, "num_ctx": self.s.num_ctx},
+                "options": {"temperature": temperature, "seed": self.s.seed, "num_ctx": self.s.num_ctx,
+                            "num_predict": self.s.num_predict},
             }
             started = time.time()
             try:
@@ -59,7 +60,7 @@ class OllamaProvider:
             content = data.get("message", {}).get("content", "")
             meta = {"provider": self.name, "fake": False, "model": data.get("model", self.s.model),
                     "digest": self._digest, "role": role, "temperature": temperature, "seed": self.s.seed,
-                    "num_ctx": self.s.num_ctx, "attempt": attempt + 1,
+                    "num_ctx": self.s.num_ctx, "num_predict": self.s.num_predict, "attempt": attempt + 1,
                     "seconds": round(time.time() - started, 1),
                     "prompt_tokens": data.get("prompt_eval_count"), "output_tokens": data.get("eval_count")}
             self._log(role, tag, body, content, meta)
