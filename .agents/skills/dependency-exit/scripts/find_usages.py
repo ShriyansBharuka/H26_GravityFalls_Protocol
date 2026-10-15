@@ -20,21 +20,23 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from scan_deps import collect_declared, normalize, write_output
+from scan_deps import collect_declared, is_excluded, normalize, write_output
 
 SKIP_DIRS = {"venv", "env", "build", "dist", "__pycache__", "node_modules", "site-packages"}
 TEXT_FILE_RE = re.compile(r"^(Makefile|Dockerfile.*|Procfile|.*\.(cfg|ini|ya?ml|toml|sh|txt))$")
 
 
-def iter_files(repo):
+def iter_files(repo, exclude=()):
     """All files except virtualenvs, build output and hidden folders (but keep .github for CI files)."""
     for root, dirs, files in os.walk(repo):
         dirs[:] = [d for d in dirs
                    if d not in SKIP_DIRS
                    and (not d.startswith(".") or d == ".github")
-                   and not (Path(root, d) / "pyvenv.cfg").exists()]
+                   and not (Path(root, d) / "pyvenv.cfg").exists()
+                   and not is_excluded(Path(root, d).relative_to(repo).as_posix(), exclude)]
         for f in files:
-            yield Path(root, f)
+            if not is_excluded(Path(root, f).relative_to(repo).as_posix(), exclude):
+                yield Path(root, f)
 
 
 def module_name(path, repo):
@@ -126,9 +128,9 @@ def analyze_file(path, repo):
             "patches": [(n, t, code(n)) for n, t in patches]}
 
 
-def find_usages(repo):
+def find_usages(repo, exclude=()):
     repo = Path(repo).resolve()
-    declared = collect_declared(repo)
+    declared = collect_declared(repo, exclude)
     declared_keys = set(declared["packages"])
     # 'dateutil' -> 'python-dateutil', 'yaml' -> 'pyyaml'
     prefix_stripped = {re.sub(r"^(python-|py)", "", k): k for k in declared_keys}
@@ -152,7 +154,7 @@ def find_usages(repo):
     files, parse_errors = {}, []
     texts = []
     dep_files = set(declared["dep_files"])
-    for path in iter_files(repo):
+    for path in iter_files(repo, exclude):
         rel = path.relative_to(repo).as_posix()
         if path.suffix == ".py":
             try:
@@ -268,10 +270,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", default=".", help="repo to scan (default: current folder)")
     ap.add_argument("--out", help="write JSON here instead of printing it")
+    ap.add_argument("--exclude", nargs="*", default=[], help="repo-relative files/folders to ignore")
     args = ap.parse_args()
     if not Path(args.repo).is_dir():
         sys.exit(f"error: --repo {args.repo!r} is not a folder")
-    write_output(find_usages(args.repo), args.out)
+    write_output(find_usages(args.repo, args.exclude), args.out)
 
 
 if __name__ == "__main__":
