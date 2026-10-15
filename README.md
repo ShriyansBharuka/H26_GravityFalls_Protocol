@@ -22,6 +22,58 @@ and get a live status table plus a clean HTML status page you can host anywhere.
 
 ---
 
+## 🛠️ Hacktoberfest 2026 - `resilience_agent` (Track 2: Maintenance Agent Skill)
+
+This fork adds **`resilience_agent`**, an evidence-driven multi-agent maintenance system, plus two
+Agent Skills (`.agents/skills/dependency-exit`, `.agents/skills/linkwatch-maintainer`). LinkWatch itself is unchanged
+on this branch; repairs live on separate `ra/...` branches until a maintainer approves them.
+
+**Problem.** Dependencies rot: pins drift, manifests disagree, APIs get deprecated. AI tools can propose fixes,
+but a proposal is not proof.
+**Solution.** The agent reads the repo live, runs the real tests on Python 3.12 and 3.13 through both install
+paths, lets a council of open-weight-model voters classify issues against numbered evidence, waits for a human,
+has three competing repair strategies review each other anonymously, verifies the chosen patch in an isolated git
+worktree, retries with the verifier's logs, and writes a **Dependency Exit Capsule** that labels every statement
+as OBSERVED, VERIFIED or AI.
+
+| | |
+|---|---|
+| Setup, CLI, architecture, councils, verification, approval policy, capsule spec, limitations | [`docs/agent/GUIDE.md`](docs/agent/GUIDE.md) |
+| Agent dependencies | `requirements-agent.txt` (LangGraph 1.x + SQLite checkpointer, Pydantic 2, httpx, MCP SDK, rich, graphifyy, pytest), `requirements-dashboard.txt` (+ Streamlit) |
+| Tools | git, uv, Ollama, Graphify CLI, DeepWiki MCP (optional), GitHub CLI (only for approved publication) |
+
+**Quick start**
+
+```powershell
+uv venv --python 3.12 .venv-agent; uv pip install --python .venv-agent\Scripts\python.exe -r requirements-dashboard.txt
+uv python install 3.12 3.13; ollama pull qwen2.5-coder:3b; .venv-agent\Scripts\activate
+python -m resilience_agent doctor
+python -m resilience_agent scan
+python -m resilience_agent inspect RA-pydantic
+python -m resilience_agent approve RA-pydantic --scope pydantic,jinja2   # human decision
+python -m resilience_agent repair RA-pydantic
+python -m resilience_agent report RA-pydantic
+```
+
+**AI model details**
+
+| | |
+|---|---|
+| Model used in the demo | Qwen2.5-Coder-3B-Instruct, Ollama tag `qwen2.5-coder:3b` (Q4_K_M, 3.1B params, digest `f72c60cabf62`) |
+| Alternative | Qwen2.5-Coder-7B-Instruct, `qwen2.5-coder:7b` (digest `dae161e27b0e`); set `RA_MODEL` |
+| Source / access | Alibaba Qwen open weights via the Ollama registry, served locally by Ollama 0.40.4 on `127.0.0.1:11434`; no cloud inference |
+| License | 3B: **Qwen Research License** (open weights, research / non-commercial use). 7B: **Apache-2.0** |
+| Settings | structured JSON output (schema-constrained), seed 7, num_ctx 8192, temperature per role (0.1-0.7); recorded with every call in `.resilience/artifacts/llm-calls/` |
+| Role | discovery voters + adjudicator; repair proposers, anonymous reviewers and revisions after verification failures. It never decides acceptance: the verifier does |
+
+Why 3B: the demo laptop has no GPU (about 6 tokens/s on CPU). The 7B model works but is roughly twice as slow.
+
+**Known limitations** (full list in the guide): no Docker sandbox (reduced-trust local mode: worktree + venv +
+allow-listed commands); DeepWiki MCP works but LinkWatch is not indexed there yet; Google Code Wiki only via
+manual import; acceptance criteria exist only for LinkWatch; small-model output quality varies.
+
+---
+
 ## ✨ Features
 
 - 📋 **One config file**: list every site you care about in `sites.toml`
