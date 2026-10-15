@@ -68,6 +68,16 @@ python -m resilience_agent report RA-pydantic
 
 Why 3B: the demo laptop has no GPU (about 6 tokens/s on CPU). The 7B model works but is roughly twice as slow.
 
+**Demo results on LinkWatch (real runs, 15 Oct 2026; logs and capsules in [`demo/`](demo/))**
+
+| Step | Result |
+|---|---|
+| Baseline (VERIFIED, Python 3.12 + 3.13 x requirements.txt / pyproject.toml) | Fails in all 4 environments: Jinja2 2.11.3 cannot import `soft_unicode` from MarkupSafe 3.0.4. The pyproject path resolves pydantic 2.14.1 instead of 1.10.13, so site names/URLs are no longer whitespace-stripped (acceptance test fails only on that path). |
+| Discovery council (3B) | 13 candidates; Jinja2 + Pydantic SUPPORTED by executed evidence even though skeptic and evidence voters dissented; setuptools / pkg_resources downgraded to NEEDS_INVESTIGATION |
+| RA-jinja2 (approved, scope jinja2) | **VERIFIED_RESOLUTION** on attempt 3: candidate C1 sets `Jinja2==3.1.6` in both manifests ([patch](demo/jinja2-capsule/selected.patch), [capsule](demo/jinja2-capsule/capsule.md)). 18 checks/tests fixed, 0 regressions; still not fully green because of the out-of-scope pydantic issue. Publication (gate 2) pending. |
+| RA-pydantic (approved, scope pydantic + jinja2) | **NO_VERIFIED_SOLUTION** in runs 2 and 5: the 3B candidates only re-pinned pydantic and never migrated `linkwatch/config.py`; the verifier blocked each with 2 regressions ([run 5 capsule](demo/run5-capsule/capsule.md)) |
+| Failures that improved the agent | 3B truncated `pyproject.toml` (-> find/replace edits + guards); runaway generation (-> output cap); reviewer labels dropped (-> normalisation); identical failed patch resubmitted (-> varied sampling, duplicate rejection, manifest consistency check). 7B: 12 min per call on this CPU, too slow for the deadline. |
+
 **Known limitations** (full list in the guide): no Docker sandbox (reduced-trust local mode: worktree + venv +
 allow-listed commands); DeepWiki MCP works but LinkWatch is not indexed there yet; Google Code Wiki only via
 manual import; acceptance criteria exist only for LinkWatch; small-model output quality varies.
