@@ -268,8 +268,15 @@ def repair_graph(settings, provider, db, log=print):
         db.save_candidate(state["issue_id"], cand)
         log(f"[verify] {cand['cand_id']} gate {'PASSED' if passed else 'FAILED'}: {v['gate']['reasons'] or 'all criteria met'}"
             f"; fully green: {v['gate']['fully_green']}; weights -> {weights}")
-        fb = "" if passed else repair.failure_feedback(v["gate"]["full_gate"] | {"failures": v["gate"]["new_check_failures"] or v["gate"]["full_gate"]["failures"]},
-                                                     v["gate"]["comparison"])
+        fb = ""
+        if not passed:
+            issue = db.issue(state["issue_id"])
+            scope = issue.get("scope") or issue["affected_dependencies"]
+            defects = [d for r in reviews if r["cand_id"] == cand["cand_id"] for d in r.get("defects", [])]
+            fb = repair.failure_feedback(
+                v["gate"]["full_gate"] | {"failures": v["gate"]["new_check_failures"] or v["gate"]["full_gate"]["failures"]},
+                v["gate"]["comparison"], reasons=v["gate"]["reasons"],
+                declarations=repair.manifest_declarations(cand["apply"]["worktree"], scope=scope), defects=defects)
         return {"weights": weights, "weights_history": state["weights_history"] + [weights],
                 "status": "passed" if passed else "failed", "feedback": fb}
 
@@ -287,12 +294,16 @@ def repair_graph(settings, provider, db, log=print):
         try:
             new = repair.propose(provider, issue, index, base["gate"], failed["strategy"],
                                  feedback="The verifier ran your patch and it FAILED:\n" + state["feedback"],
-                                 prior=failed, log=log)
+                                 prior=failed, log=log, prior_failed=True, attempt=state["attempt"])
         except Exception as e:
             log(f"[retry] revision failed: {e}")
             return {"status": "retry_failed"}
         n = 1 + max(int(c["cand_id"][1:]) for c in db.candidates(state["issue_id"]) if c["strategy"] == failed["strategy"])
         new["cand_id"], new["revises"] = f"{failed['strategy']}{n}", failed["cand_id"]
+        dup = repair.failed_duplicate(new, db.candidates(state["issue_id"]))
+        if dup:
+            new["valid"] = False
+            new["problems"] = new["problems"] + [f"identical to {dup}, which already failed verification"]
         new["status"] = "proposed" if new["valid"] else "invalid"
         new["feedback_used"] = state["feedback"]
         db.save_candidate(state["issue_id"], new)

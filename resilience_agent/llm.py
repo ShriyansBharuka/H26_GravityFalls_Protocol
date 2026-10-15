@@ -39,7 +39,7 @@ class OllamaProvider:
         return {"status": "ready", "model": wanted, "digest": self._digest,
                 "details": models[wanted].get("details", {})}
 
-    def complete(self, role, system, prompt, schema: type[BaseModel], temperature=0.2, tag=""):
+    def complete(self, role, system, prompt, schema: type[BaseModel], temperature=0.2, tag="", seed=None):
         """Ask for JSON matching `schema`; retry once with the validation error if it does not match."""
         messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
         last_error = None
@@ -47,7 +47,7 @@ class OllamaProvider:
             body = {
                 "model": self.s.model, "messages": messages, "stream": False,
                 "format": schema.model_json_schema(),
-                "options": {"temperature": temperature, "seed": self.s.seed, "num_ctx": self.s.num_ctx,
+                "options": {"temperature": temperature, "seed": self.s.seed if seed is None else seed, "num_ctx": self.s.num_ctx,
                             "num_predict": self.s.num_predict},
             }
             started = time.time()
@@ -59,7 +59,7 @@ class OllamaProvider:
             data = r.json()
             content = data.get("message", {}).get("content", "")
             meta = {"provider": self.name, "fake": False, "model": data.get("model", self.s.model),
-                    "digest": self._digest, "role": role, "temperature": temperature, "seed": self.s.seed,
+                    "digest": self._digest, "role": role, "temperature": temperature, "seed": self.s.seed if seed is None else seed,
                     "num_ctx": self.s.num_ctx, "num_predict": self.s.num_predict, "attempt": attempt + 1,
                     "seconds": round(time.time() - started, 1),
                     "prompt_tokens": data.get("prompt_eval_count"), "output_tokens": data.get("eval_count")}
@@ -94,7 +94,7 @@ class FakeProvider:
     def health(self):
         return {"status": "ready", "model": "FAKE-deterministic", "fake": True}
 
-    def complete(self, role, system, prompt, schema, temperature=0.2, tag=""):
+    def complete(self, role, system, prompt, schema, temperature=0.2, tag="", seed=None):
         self.calls.append({"role": role, "prompt": prompt, "tag": tag})
         out = schema.model_validate(self.responder(role, prompt, schema))
         return out, {"provider": "fake", "fake": True, "model": "FAKE-deterministic", "role": role}
