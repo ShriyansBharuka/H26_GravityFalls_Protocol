@@ -229,6 +229,14 @@ def repair_graph(settings, provider, db, log=print):
     def rank_repair_candidates(state):
         cands = db.candidates(state["issue_id"])
         reviews = [v["data"] for v in db.votes(state["issue_id"], "repair-review")]
+        history = [c for c in db.archived_candidates(state["issue_id"]) if c.get("status") == "failed"]
+        for c in cands:  # a patch that failed in an earlier run of this issue is not tried again
+            dup = repair.failed_duplicate(c, history)
+            if dup and c.get("status") == "proposed":
+                c["status"], c["valid"] = "invalid", False
+                c["problems"] = c.get("problems", []) + [f"identical to {dup} from an earlier run, which failed verification"]
+                db.save_candidate(state["issue_id"], c)
+                log(f"[repair]   {c['cand_id']} rejected: identical to {dup} that failed in an earlier run")
         table = repair.rank(cands, reviews, state["weights"])
         log("[repair] ranking: " + ", ".join(f"{r['cand_id']}={r['score']}" for r in table))
         if not table:
@@ -300,7 +308,7 @@ def repair_graph(settings, provider, db, log=print):
             return {"status": "retry_failed"}
         n = 1 + max(int(c["cand_id"][1:]) for c in db.candidates(state["issue_id"]) if c["strategy"] == failed["strategy"])
         new["cand_id"], new["revises"] = f"{failed['strategy']}{n}", failed["cand_id"]
-        dup = repair.failed_duplicate(new, db.candidates(state["issue_id"]))
+        dup = repair.failed_duplicate(new, db.candidates(state["issue_id"]) + db.archived_candidates(state["issue_id"]))
         if dup:
             new["valid"] = False
             new["problems"] = new["problems"] + [f"identical to {dup}, which already failed verification"]

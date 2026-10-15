@@ -270,7 +270,10 @@ def critique_for(cand, reviews):
 
 def failed_duplicate(cand, cands):
     """cand_id of an already-failed candidate with an identical diff, else None."""
-    return next((c["cand_id"] for c in cands if c.get("status") == "failed" and c["cand_id"] != cand["cand_id"]
+    # ids repeat across runs (A1 in run 5 and run 7), so "same candidate" means same id AND same creation time
+    def same(c):
+        return c is cand or (c["cand_id"] == cand["cand_id"] and c.get("created_at") == cand.get("created_at"))
+    return next((c["cand_id"] for c in cands if c.get("status") == "failed" and not same(c)
                  and c["diff"].strip() == cand["diff"].strip()), None)
 
 

@@ -114,6 +114,11 @@ class DB:
     def verifications(self, issue_id):
         return [_row(r) for r in self._x("SELECT * FROM verifications WHERE issue_id=? ORDER BY id", (issue_id,))]
 
+    def archived_candidates(self, issue_id):
+        """Candidates from earlier, archived repair runs of the same issue."""
+        return [json.loads(r["data"]) for r in
+                self._x("SELECT data FROM candidates WHERE issue_id LIKE ?", (f"{issue_id}@archived-%",))]
+
     def archive_repair_run(self, issue_id):
         """Move a previous repair run's candidates/reviews/verifications aside so a new run starts clean."""
         if not self.candidates(issue_id):
