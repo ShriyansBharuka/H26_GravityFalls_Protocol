@@ -23,8 +23,9 @@ class Settings:
     model: str = field(default_factory=lambda: _env("RA_MODEL", "qwen2.5-coder:3b"))
     ollama_url: str = field(default_factory=lambda: _env("OLLAMA_HOST", "http://127.0.0.1:11434"))
     num_ctx: int = field(default_factory=lambda: int(_env("RA_NUM_CTX", "8192")))
+    num_predict: int = field(default_factory=lambda: int(_env("RA_NUM_PREDICT", "1500")))  # caps runaway output
     seed: int = field(default_factory=lambda: int(_env("RA_SEED", "7")))
-    llm_timeout: float = field(default_factory=lambda: float(_env("RA_LLM_TIMEOUT", "900")))
+    llm_timeout: float = field(default_factory=lambda: float(_env("RA_LLM_TIMEOUT", "420")))
     pythons: list = field(default_factory=lambda: _env("RA_PYTHONS", "3.12,3.13").split(","))
     install_modes: list = field(default_factory=lambda: _env("RA_INSTALL_MODES", "requirements,package").split(","))
     max_attempts: int = field(default_factory=lambda: int(_env("RA_MAX_ATTEMPTS", "3")))
