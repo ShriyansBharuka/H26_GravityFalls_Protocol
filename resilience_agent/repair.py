@@ -94,7 +94,32 @@ def file_block(repo, files):
     return "\n\n".join(f"=== {f} ===\n{(Path(repo) / f).read_text(encoding='utf-8')}" for f in files)
 
 
-def validate_changes(proposal: dict, allowed, repo):
+def manifest_declarations(repo, changes=(), scope=()):
+    """Declarations of the scoped deps in every manifest, as they would be after `changes` (file:line, spec)."""
+    import tempfile
+    from .context import _scan_deps
+    overlay = {c["path"]: c["content"] for c in changes}
+    with tempfile.TemporaryDirectory() as tmp:
+        for f in list(Path(repo).glob("requirements*.txt")) + [Path(repo) / "pyproject.toml"]:
+            if f.exists() and f.name != "requirements-agent.txt":
+                (Path(tmp) / f.name).write_text(overlay.get(f.name, f.read_text(encoding="utf-8")), encoding="utf-8")
+        found = _scan_deps.collect_declared(tmp)
+    return {dep: [s for s in found["packages"].get(dep, {}).get("sources", []) if s["group"] != "build-system"]
+            for dep in scope}
+
+
+def consistency_problems(repo, changes, scope):
+    """Every manifest that declares a scoped package must use the same version spec."""
+    problems = []
+    for dep, sources in manifest_declarations(repo, changes, scope).items():
+        if len({s["spec"] for s in sources}) > 1:
+            problems.append(f"{dep}: manifests disagree after your edits - " + "; ".join(
+                f"{s['file']}:{s['line']} '{s['name']}{s['spec']}'" for s in sources)
+                + ". Every manifest declaring it must use the same version spec.")
+    return problems
+
+
+def validate_changes(proposal: dict, allowed, repo, scope=()):
     """Apply find/replace edits to the current files and reject anything unsafe or malformed.
 
     Edits (not whole-file rewrites) because a small model truncated pyproject.toml when asked to
@@ -132,6 +157,8 @@ def validate_changes(proposal: dict, allowed, repo):
         changes.append({"path": path, "content": content if content.endswith("\n") else content + "\n"})
     if not changes and not problems:
         problems.append("no effective file changes")
+    if changes and scope:
+        problems += consistency_problems(repo, changes, scope)
     return changes, problems
 
 
@@ -155,13 +182,17 @@ def issue_brief(issue, base_gate):
 
 # ---------------------------------------------------------------- council stages
 
-def propose(provider, issue, index, base_gate, strategy, feedback=None, prior=None, log=print):
+def propose(provider, issue, index, base_gate, strategy, feedback=None, prior=None, log=print,
+            prior_failed=False, attempt=0):
     repo = index["meta"]["path"]
     allowed = allowed_files(issue, index)
+    scope = issue.get("scope") or issue["affected_dependencies"]
     name, instructions = STRATEGIES[strategy]
     prompt = (f"{issue_brief(issue, base_gate)}\n\n{instructions}\n\nALLOWED files (current content):\n"
               f"{file_block(repo, allowed)}\n\n")
-    if prior:
+    if prior and prior_failed:
+        prompt += f"THIS FAILED, do not repeat it - your previous patch, rejected by the verifier:\n{prior['diff']}\n\n"
+    elif prior:
         prompt += f"Your previous proposal:\n{prior['diff']}\n\n"
     if feedback:
         prompt += f"FEEDBACK you must address:\n{feedback}\n\n"
@@ -169,17 +200,22 @@ def propose(provider, issue, index, base_gate, strategy, feedback=None, prior=No
                "string copied EXACTLY from that file (whole lines; it must appear once), and its `replace` text. "
                "Change every manifest that declares a scoped dependency.")
     log(f"[repair] proposer {strategy} ({name}){' revising' if prior else ''} ...")
-    out, meta = provider.complete(f"proposer-{strategy}", SYSTEM, prompt, Proposal, 0.4, tag=issue["issue_id"])
+    # each retry samples differently, so a deterministic model cannot return the same failed patch
+    temperature = min(0.9, 0.4 + 0.2 * attempt)
+    seed = None if not attempt else 1000 * attempt + ord(strategy)
+    out, meta = provider.complete(f"proposer-{strategy}", SYSTEM, prompt, Proposal, temperature,
+                                  tag=issue["issue_id"], seed=seed)
     data = out.model_dump()
-    changes, problems = validate_changes(data, allowed, repo)
+    changes, problems = validate_changes(data, allowed, repo, scope)
     if problems:  # one self-correction round with the exact validation errors
         log(f"[repair]   {strategy}: edits rejected by validator ({len(problems)} problem(s)); asking for a correction")
         retry = (prompt + "\n\nYour previous edits were REJECTED by the validator:\n"
                  + "\n".join(f"- {p}" for p in problems)
                  + "\nCopy `find` text EXACTLY from the ALLOWED file contents above.")
-        out2, meta = provider.complete(f"proposer-{strategy}", SYSTEM, retry, Proposal, 0.2, tag=issue["issue_id"])
+        out2, meta = provider.complete(f"proposer-{strategy}", SYSTEM, retry, Proposal, 0.2, tag=issue["issue_id"],
+                                       seed=None if seed is None else seed + 1)
         data2 = out2.model_dump()
-        changes2, problems2 = validate_changes(data2, allowed, repo)
+        changes2, problems2 = validate_changes(data2, allowed, repo, scope)
         meta["self_correction"] = {"first_problems": problems, "second_problems": problems2}
         if not problems2 or len(changes2) > len(changes):
             data, changes, problems = data2, changes2, problems2
@@ -230,11 +266,18 @@ def critique_for(cand, reviews):
                      for r in mine)
 
 
+def failed_duplicate(cand, cands):
+    """cand_id of an already-failed candidate with an identical diff, else None."""
+    return next((c["cand_id"] for c in cands if c.get("status") == "failed" and c["cand_id"] != cand["cand_id"]
+                 and c["diff"].strip() == cand["diff"].strip()), None)
+
+
 def rank(cands, reviews, weights):
-    """Deterministic: weighted criteria x reviewer weight, defect penalty; ties -> smaller diff, then id."""
+    """Deterministic: weighted criteria x reviewer weight, defect penalty; ties -> smaller diff, then id.
+    Candidates identical to a patch that already failed verification are excluded."""
     table = []
     for c in cands:
-        if not c["valid"] or c.get("status") in ("failed", "superseded"):
+        if not c["valid"] or c.get("status") in ("failed", "superseded") or failed_duplicate(c, cands):
             continue
         mine = [r for r in reviews if r["cand_id"] == c["cand_id"]]
         if mine:
@@ -285,10 +328,14 @@ def apply_in_worktree(settings, issue, cand, base_commit):
     return {"worktree": str(wt), "branch": branch, "commit": sha, "patch": patch}
 
 
-def failure_feedback(gate_result, comparison):
-    """Verifier evidence for the proposer: failing tests first, each distinct error once, with its environments."""
+def failure_feedback(gate_result, comparison, reasons=(), declarations=None, defects=()):
+    """Verifier evidence for the proposer: gate reasons with exact manifest file:line, failing tests, each distinct
+    error once with its environments, regressions, and the reviewers' specific defect findings."""
     import re
-    lines, seen = [], {}
+    lines, seen = [f"- GATE: {r}" for r in reasons], {}
+    for dep, sources in (declarations or {}).items():
+        for s in sources:
+            lines.append(f"- {s['file']}:{s['line']} declares {s['name']}{s['spec'] or ' (no version spec)'}")
     for t in gate_result["failed_tests"]:
         key = (t["test"], re.sub(r"\(.*?\)|\s+", " ", t.get("message") or "")[:160].strip())
         seen.setdefault(key, []).append(f"py{t['python']}/{t['mode']}")
@@ -303,6 +350,8 @@ def failure_feedback(gate_result, comparison):
         lines.append(f"- check {check} failed on {', '.join(envs)}: {err}")
     for r in comparison.get("regressions", [])[:6]:
         lines.append(f"- REGRESSION vs baseline (passed before your patch): {r}")
+    for d in list(dict.fromkeys(defects))[:6]:
+        lines.append(f"- REVIEWER DEFECT: {d}")
     return "\n".join(lines)
 
 

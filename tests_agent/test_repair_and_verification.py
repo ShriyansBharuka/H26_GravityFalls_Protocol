@@ -36,6 +36,50 @@ def test_reviewer_never_sees_own_patch():
     assert "DIFF-OF-B" in seen["prompt"] and "DIFF-OF-A" not in seen["prompt"]
 
 
+def test_validator_requires_consistent_specs_across_manifests(tiny_repo):
+    allowed = ["requirements.txt", "pyproject.toml"]
+    one = {"edits": [{"path": "pyproject.toml", "find": '"oldlib>=2"', "replace": '"oldlib>=3"'}]}
+    _, probs = repair.validate_changes(one, allowed, tiny_repo, scope=["oldlib"])
+    assert any("manifests disagree" in p and "requirements.txt:1" in p for p in probs)
+    both = {"edits": [{"path": "pyproject.toml", "find": '"oldlib>=2"', "replace": '"oldlib>=3"'},
+                      {"path": "requirements.txt", "find": "oldlib==1.0", "replace": "oldlib>=3"}]}
+    changes, probs = repair.validate_changes(both, allowed, tiny_repo, scope=["oldlib"])
+    assert not probs and len(changes) == 2
+
+
+def test_duplicate_of_failed_patch_is_excluded():
+    cands = [cand("A1", "A", "same\n", status="failed"), cand("A2", "A", "same\n"), cand("C1", "C", "other\n")]
+    assert repair.failed_duplicate(cands[1], cands) == "A1"
+    assert [r["cand_id"] for r in repair.rank(cands, [], {})] == ["C1"]
+
+
+def test_retry_feedback_has_gate_reasons_locations_and_defects():
+    fb = repair.failure_feedback({"failed_tests": [], "failures": []}, {"regressions": []},
+                                 reasons=["install paths still resolve different versions"],
+                                 declarations={"x": [{"file": "requirements.txt", "line": 4, "name": "x", "spec": "==1"}]},
+                                 defects=["only pyproject.toml is changed"])
+    assert "GATE: install paths" in fb and "requirements.txt:4 declares x==1" in fb
+    assert "REVIEWER DEFECT: only pyproject.toml is changed" in fb
+
+
+def test_retry_changes_sampling_and_labels_failed_patch(tiny_repo):
+    seen = []
+
+    class P:
+        def complete(self, role, system, prompt, schema, temperature=0.2, tag="", seed=None):
+            seen.append((prompt, temperature, seed))
+            return schema.model_validate({"diagnosis": "d", "solution": "s", "edits": [
+                {"path": "requirements.txt", "find": "oldlib==1.0", "replace": "oldlib>=2"}]}), {}
+    index = {"meta": {"path": str(tiny_repo)}, "scan": {"packages": [], "dep_files": ["requirements.txt"]},
+             "usages": {"packages": {}}}
+    issue = {"issue_id": "RA-x", "title": "t", "description": "", "affected_dependencies": ["zzz"], "evidence": []}
+    repair.propose(P(), issue, index, {}, "A", log=lambda *_: None)
+    repair.propose(P(), issue, index, {}, "A", feedback="f", prior={"diff": "OLD"}, prior_failed=True,
+                   attempt=2, log=lambda *_: None)
+    assert seen[0][2] is None and seen[1][2] is not None and seen[1][1] > seen[0][1]
+    assert "THIS FAILED, do not repeat it" in seen[1][0] and "OLD" in seen[1][0]
+
+
 def test_review_labels_are_normalised():
     shown = {"Proposal-P": 1, "Proposal-Q": 2}
     for raw in ("P", "Proposal-P", "proposal p", "### Proposal-P:", "p"):
