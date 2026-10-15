@@ -55,7 +55,7 @@ Bullets:
 - Indexed 15 modules, 14 declared dependencies, 169 provenance-tagged facts, 13 candidate issues (also found: undeclared certifi, unused six and idna, a private requests API, a monkeypatch).
 - Council disagreed (Discovery: real; Skeptic + Evidence: "not an issue") - evidence rules still marked Jinja2 and Pydantic SUPPORTED because tests proved the failures; two weaker issues were downgraded to NEEDS_INVESTIGATION.
 - Runs on a CPU-only laptop (Intel i5, 16 GB RAM, no GPU): about 2.5 min per council vote, about 2 min per full verification matrix. Zero API cost.
-- Repair result: [FILL IN THE FINAL REPAIR OUTCOME - "VERIFIED_RESOLUTION" or "NO_VERIFIED_SOLUTION", copied from the capsule. Do NOT write "fixed" unless the capsule says VERIFIED_RESOLUTION.]
+- Repair results (VERIFIED): RA-jinja2 -> VERIFIED_RESOLUTION on attempt 3 (Jinja2==3.1.6 in both manifests; 18 checks/tests fixed, 0 regressions; on branch ra/RA-jinja2-C1, awaiting publication approval). RA-pydantic -> NO_VERIFIED_SOLUTION (the 3B model only re-pinned versions and never migrated the code; the verifier blocked every attempt). Show these as two small result badges: green check for jinja2, amber "not verified" for pydantic.
 Speaker notes: "Everything on this slide came from commands we actually ran on the organisers' repository."
 
 === SLIDE 5 - Impacts & Benefits ===
@@ -91,4 +91,4 @@ Speaker notes: "We list our limitations openly; they are also in the README."
 - Graphify graph screenshot -> slide 3, small.
 If an image is missing, leave a neat placeholder box labelled with the image name. Do not generate fake screenshots.
 
-Before finishing, check: 6 slides, template logos intact, no invented numbers, VERIFIED / OBSERVED / AI tags visible on slides 2, 4 and 5, and the slide-4 repair result left as a placeholder unless I give you the value.
+Before finishing, check: 6 slides, template logos intact, no invented numbers, VERIFIED / OBSERVED / AI tags visible on slides 2, 4 and 5, and the slide-4 repair results stated exactly as given.
