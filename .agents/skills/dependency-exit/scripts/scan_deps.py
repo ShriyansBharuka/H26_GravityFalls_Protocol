@@ -117,14 +117,20 @@ def read_pyproject(path, repo, found):
                 found["skipped_lines"].append({"file": rel, "line": line, "text": item})
 
 
-def collect_declared(repo):
+def is_excluded(rel, exclude):
+    """True if repo-relative path `rel` is one of `exclude` or inside one of them."""
+    return any(rel == e or rel.startswith(e.rstrip("/") + "/") for e in exclude)
+
+
+def collect_declared(repo, exclude=()):
     """Every dependency declared in requirements*.txt and pyproject.toml (no network)."""
     repo = Path(repo).resolve()
     found = {"dep_files": [], "requires_python": None, "packages": {},
              "commented_out": [], "skipped_lines": [], "errors": []}
     seen = set()
     for path in sorted(repo.glob("requirements*.txt")) + sorted(repo.glob("requirements/*.txt")):
-        read_requirements(path, repo, found, seen)
+        if not is_excluded(path.relative_to(repo).as_posix(), exclude):
+            read_requirements(path, repo, found, seen)
     if (repo / "pyproject.toml").exists():
         read_pyproject(repo / "pyproject.toml", repo, found)
     return found
@@ -234,9 +240,9 @@ def risk_flags(pkg, facts, stale_days, target_python):
     return flags
 
 
-def scan(repo, offline=False, stale_days=730, target_python=None):
+def scan(repo, offline=False, stale_days=730, target_python=None, exclude=()):
     repo = Path(repo).resolve()
-    found = collect_declared(repo)
+    found = collect_declared(repo, exclude)
     target, target_source = detect_target_python(repo, target_python)
     now = datetime.now(timezone.utc)
     packages = sorted(found["packages"].values(), key=lambda p: p["name"])
@@ -292,10 +298,11 @@ def main():
     ap.add_argument("--offline", action="store_true", help="skip PyPI, only parse files")
     ap.add_argument("--stale-days", type=int, default=730, help="flag packages with no release for this long")
     ap.add_argument("--target-python", help="Python version the repo runs on, e.g. 3.12 (auto-detected if omitted)")
+    ap.add_argument("--exclude", nargs="*", default=[], help="repo-relative files/folders to ignore")
     args = ap.parse_args()
     if not Path(args.repo).is_dir():
         sys.exit(f"error: --repo {args.repo!r} is not a folder")
-    write_output(scan(args.repo, args.offline, args.stale_days, args.target_python), args.out)
+    write_output(scan(args.repo, args.offline, args.stale_days, args.target_python, args.exclude), args.out)
 
 
 if __name__ == "__main__":
