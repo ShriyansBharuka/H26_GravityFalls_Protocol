@@ -11,3 +11,7 @@ status.html
 .env
 .env.*
 dependency-exit-out/
+graphify-out/
+.resilience/
+!.env.example
+.playwright-mcp/
