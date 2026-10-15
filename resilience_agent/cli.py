@@ -193,6 +193,12 @@ def cmd_repair(args):
     db = s.db()
     if db.latest_decision(args.issue_id, "issue") != "approve":
         console.print(f"[yellow]{args.issue_id} is not approved. The run will pause at gate 1.[/yellow]")
+    if getattr(args, "guidance", None):
+        issue = db.issue(args.issue_id)
+        issue.setdefault("maintainer_guidance", []).append({"text": args.guidance, "actor": "human-cli",
+                                                           "at": __import__("resilience_agent.storage").storage.now()})
+        db.save_issue(issue)
+        console.print("maintainer guidance recorded (HUMAN) and added to every proposer prompt")
     n = db.get(f"repair-thread:{args.issue_id}", 0) + (1 if args.new else 0)
     db.put(f"repair-thread:{args.issue_id}", n)
     g = workflow.repair_graph(s, _provider(s), db, log)
@@ -295,6 +301,7 @@ def main(argv=None):
     p = sub.add_parser("repair")
     p.add_argument("issue_id")
     p.add_argument("--new", action="store_true", help="start a fresh repair thread")
+    p.add_argument("--guidance", help="maintainer guidance for the proposers (recorded as HUMAN input)")
     p.set_defaults(fn=cmd_repair)
     p = sub.add_parser("verify")
     p.add_argument("issue_id")

@@ -121,6 +121,8 @@ def render_md(c, issue, base, final, selected, state):
     for dep, uses in c["OBSERVED"]["usage_sites"].items():
         L += [f"- `{u['file']}:{u['line']}` `{u['code']}`" for u in uses] or [f"- {dep}: no imports found"]
         L.append(f"- API symbols used: {', '.join(c['OBSERVED']['api_symbols'][dep]) or 'none'}")
+    for g in issue.get("maintainer_guidance", []):
+        L += ["", f"**Maintainer guidance (HUMAN, {g['at']})** given to every proposer:", "", "> " + g["text"].replace("\n", "\n> ")]
     L += ["", "## 5. Discovery council (AI)",
           f"- Classification after evidence rules: **{issue['classification']}** ({issue['confidence_label']}), "
           f"reproduction: {issue['reproduction_status']}"]

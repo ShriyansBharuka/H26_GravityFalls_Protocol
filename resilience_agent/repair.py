@@ -177,7 +177,9 @@ def issue_brief(issue, base_gate):
             f"Evidence:\n{ev}\n"
             f"Tests that must pass after the repair: {', '.join(issue.get('target_tests', [])) or 'all existing tests'}\n"
             f"Verification runs every test on Python 3.12 and 3.13, installing BOTH from requirements*.txt and "
-            f"from pyproject.toml; both paths must work and resolve consistent versions of the scoped dependencies.")
+            f"from pyproject.toml; both paths must work and resolve consistent versions of the scoped dependencies."
+            + "".join(f"\n\nMAINTAINER GUIDANCE (from a human reviewer, follow it):\n{g['text']}"
+                      for g in issue.get("maintainer_guidance", [])))
 
 
 # ---------------------------------------------------------------- council stages
