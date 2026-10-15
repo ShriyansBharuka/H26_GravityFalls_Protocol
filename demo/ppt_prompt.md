@@ -67,6 +67,7 @@ Bottom band "What we learned from real failures (and fixed)":
 - The 3B model truncated pyproject.toml when asked to rewrite whole files -> switched to exact find/replace edits with parse and truncation guards.
 - A runaway generation ran past 15 minutes -> output cap (num_predict) and timeouts.
 - Early repair candidates only aligned version pins; the verifier caught 2 regressions and fed the logs back; an earlier run honestly ended NO_VERIFIED_SOLUTION after 3 bounded attempts.
+- When a human maintainer explained why pin-only patches fail (labelled HUMAN, never passed off as AI), a proposer attempted the real Pydantic v2 code migration for the first time; its edits were still too imprecise to pass the validator, and patches identical to ones that already failed are now rejected automatically.
 Speaker notes: "Our failures are on record in the repo's demo folder. That is the point: the system shows when it could not prove a fix."
 
 === SLIDE 6 - Research & References ===
