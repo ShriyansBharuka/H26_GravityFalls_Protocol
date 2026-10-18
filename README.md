@@ -178,7 +178,7 @@ If your Python 3.12 has a different name on macOS/Linux, pass it to make:
 ```bash
 python -m linkwatch.cli check                     # 1. check your sites
 python -m linkwatch.cli report -o status.html     # 2. build the status page
-open status.html                                  # 3. view it (xdg-open on Linux)
+open status.html                                  # 3. view it (xdg-open on Linux, start on Windows)
 ```
 
 ---
